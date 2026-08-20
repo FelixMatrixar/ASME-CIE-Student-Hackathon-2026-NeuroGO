@@ -83,6 +83,7 @@ inferred) · `open`.
 | [F-060](#f-060) | **The 400-part evaluation slice checks out against 1,600 more** | confirmed |
 | [F-061](#f-061) | **A proper hyperparameter sweep would have shipped a worse hole model** | confirmed |
 | [F-062](#f-062) | **Gradient boosting was never compared against other model families, until now** | confirmed |
+| [F-063](#f-063) | **Feature importance: 4 inputs carry 95%, and 2 are dead weight** | confirmed |
 
 ---
 
@@ -2708,6 +2709,86 @@ gradient boosting over any alternative. The choice itself, now checked, was
 right on both tasks and by a comfortable margin, so nothing about the shipped
 pipeline changes. What changes is that this is now a measured conclusion rather
 than an inherited default.
+
+---
+
+<a id="f-063"></a>
+### F-063 — Feature importance: 4 inputs carry 95%, and 2 are dead weight
+**Status:** confirmed · **Method** · **Source:** `sklearn.inspection.permutation_importance`, 10 repeats, held-out parts only
+
+**The gap.** Both models were shipped without anyone ever asking which inputs
+they actually use. For a data-mining submission that is a conspicuous omission:
+feature importance is standard practice, and its absence meant we could not say
+whether our engineered features earned their place.
+
+**Method.** Permutation importance on the held-out range (parts ≥ 8,000), not
+tree gain. Gain is biased toward high-cardinality continuous features;
+permutation asks the honest question directly, how much held-out accuracy is
+lost when this one column is shuffled. Ten repeats, standard deviations below.
+
+**Hole chain classifier** (0.9701 held-out, 6,757 rows, 15 classes):
+
+| Feature | Accuracy drop | sd | Share |
+|---|---:|---:|---:|
+| `diameter_mm` | **0.6333** | 0.0064 | **50.5%** |
+| `aspect` | 0.2262 | 0.0043 | 18.1% |
+| `depth_mm` | 0.1959 | 0.0033 | 15.6% |
+| `through` | 0.1361 | 0.0035 | 10.9% |
+| `stock_height` | 0.0369 | 0.0017 | 2.9% |
+| `top_drop` | 0.0142 | 0.0011 | 1.1% |
+| `in_pocket` | 0.0069 | 0.0006 | 0.6% |
+| `depth_fraction` | 0.0034 | 0.0007 | 0.3% |
+| `same_diameter_count` | −0.0002 | 0.0003 | none |
+| `n_holes` | −0.0003 | 0.0006 | none |
+
+**Block order classifier** (0.8968 held-out, 3,015 rows, 10 classes):
+
+| Feature | Accuracy drop | sd | Share |
+|---|---:|---:|---:|
+| `n_holes` | **0.3044** | 0.0049 | **27.2%** |
+| `n_floors` | 0.2192 | 0.0055 | 19.6% |
+| `n_chamfers` | 0.2095 | 0.0042 | 18.7% |
+| `mean_hole_depth` | 0.2033 | 0.0076 | 18.2% |
+| `n_through` | 0.0965 | 0.0036 | 8.6% |
+| `stock_height` | 0.0561 | 0.0036 | 5.0% |
+| `max_hole_diameter` | 0.0272 | 0.0038 | 2.4% |
+| `stock_length` | 0.0027 | 0.0023 | 0.2% |
+| `stock_width` | 0.0004 | 0.0013 | 0.0% |
+| `n_blends` | −0.0001 | 0.0014 | none |
+| `max_pocket_depth` | −0.0013 | 0.0021 | none |
+
+**Three things worth reading off these tables.**
+
+**1. The model uses the same information the rules used, but finds better
+boundaries in it.** The hole classifier's top four features, diameter, aspect,
+depth, through, are exactly the four quantities the hand-written rules keyed on
+(`SPOT_DRILL_MAX_DIAMETER`, `DEEP_HOLE_MIN_ASPECT`, `PILOT_MIN_DIAMETER`, and
+the through/blind test). They carry **95.1%** of importance. So the model did
+not discover new signal; it found a better decision surface in the same
+four-dimensional space. That corroborates F-062 directly: the structure here
+really is axis-aligned thresholds, which is why trees win and why a linear
+model cannot compete.
+
+**2. Q-013 gets a partial negative answer.** `in_pocket` and `top_drop` were
+engineered specifically to test the hypothesis that `HOLE_MILLING` is selected
+because a hole opens on a pocket floor rather than the top face. Together they
+are worth **1.7%**. The hypothesis is not supported by the data. The mechanism
+behind milled-hole selection remains unexplained, but this rules out the
+leading candidate rather than leaving it open.
+
+**3. Two features in each model are dead weight**, with importance at or below
+zero: `same_diameter_count` and `n_holes` on hole chains, `n_blends` and
+`max_pocket_depth` on block order. `n_blends` is a second, independent
+confirmation that corner blends contribute nothing to the shipped pipeline;
+they are recognised, they feed no operation, and now we know they do not even
+help as a predictor. Block footprint (`stock_length`, `stock_width`) is
+likewise irrelevant, which is intuitive: how the families are ordered depends
+on how many of each feature exists, not on how wide the plate is.
+
+**Not acted on.** Dropping the four dead features would simplify the models but
+cannot improve them measurably, since each contributes about zero. Recorded as
+future work rather than a change, because a refit and a re-validation is not
+justified by an expected gain of nothing.
 The honest options are to accept the ceiling, or to ask the organizers whether
 the intended reading of the rubric is the one we assumed, since Q-002 alone is
 worth 2.25 points here.

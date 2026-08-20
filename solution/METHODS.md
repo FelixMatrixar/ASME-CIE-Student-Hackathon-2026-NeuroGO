@@ -374,6 +374,49 @@ random forest's row and feature subsampling helps less here, plausibly because
 ten input features and several rare classes leave little for subsampling to
 exploit.
 
+### What the models actually use: feature importance
+
+Permutation importance on the held-out range, ten repeats, measured as the drop
+in held-out accuracy when a single input column is shuffled. Permutation rather
+than tree gain, because gain is biased toward high-cardinality continuous
+features and would overstate the diameter columns here.
+
+| Hole chain, top inputs | Share | | Block order, top inputs | Share |
+|---|---:|---|---|---:|
+| `diameter_mm` | 50.5 percent | | `n_holes` | 27.2 percent |
+| `aspect` | 18.1 percent | | `n_floors` | 19.6 percent |
+| `depth_mm` | 15.6 percent | | `n_chamfers` | 18.7 percent |
+| `through` | 10.9 percent | | `mean_hole_depth` | 18.2 percent |
+| *(top four together)* | **95.1 percent** | | *(top four together)* | **83.7 percent** |
+
+Three results are worth stating, because each one tells us something we did not
+otherwise know.
+
+**The model uses the same information the rules used, and finds better
+boundaries in it.** The hole classifier's top four inputs are exactly the four
+quantities our hand-written rules keyed on: diameter, aspect ratio, depth, and
+whether the hole goes through. Those four carry 95 percent of the importance.
+The classifier did not find new signal. It found a better decision surface in
+the same four-dimensional space, which is precisely why a tree-based method wins
+here and a linear one cannot, as the family comparison above shows
+independently.
+
+**One of our open questions gets a negative answer.** Two inputs, `in_pocket`
+and `top_drop`, were engineered specifically to test whether hole milling is
+selected because a hole opens onto a pocket floor rather than the top face.
+Together they are worth 1.7 percent. That hypothesis is not supported. The
+mechanism remains unexplained, but the leading candidate is now ruled out rather
+than merely untested.
+
+**Four inputs are dead weight**, at or below zero importance:
+`same_diameter_count` and `n_holes` on hole chains, `n_blends` and
+`max_pocket_depth` on block order. The `n_blends` result is an independent
+confirmation that corner blends contribute nothing: we recognise them, they feed
+no operation, and they do not help as a predictor either. We have not dropped
+these columns, because each contributes approximately zero and a refit could not
+measurably improve on that; it is recorded as future work rather than presented
+as a change.
+
 ### Hyperparameters, and whether we tuned them
 
 Both models were shipped close to scikit-learn's defaults for
