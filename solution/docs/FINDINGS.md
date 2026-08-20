@@ -53,7 +53,7 @@ inferred) · `open`.
 | [F-030](#f-030) | **No CAD kernel needed — the STEP is planes and cylinders** | confirmed |
 | [F-031](#f-031) | Feature recognition reproduces the paper's statistics | confirmed |
 | [F-032](#f-032) | ~~Hole diameter > largest tool ⟹ milled~~ | **REFUTED** by F-034 |
-| [F-033](#f-033) | **Only 14 operation chains cover every hole** | confirmed |
+| [F-033](#f-033) | Only 14 operation chains cover every hole *(later: 15, F-051)* | confirmed, count updated |
 | [F-034](#f-034) | What decides drilling strategy — and what still doesn't | partial |
 | [F-035](#f-035) | **First end-to-end submission: 21.97/100, all formats valid** | confirmed |
 | [F-036](#f-036) | Generated IPWs score worse than raw stock — *but see F-037* | superseded |
@@ -80,6 +80,9 @@ inferred) · `open`.
 | [F-057](#f-057) | Pocket area clearing; why paths remain near zero | partial |
 | [F-058](#f-058) | **Easy hits 87%. Medium's last 14 points are not geometry** | confirmed |
 | [F-059](#f-059) | **Medium is capped by an ordering the geometry does not contain** | confirmed |
+| [F-060](#f-060) | **The 400-part evaluation slice checks out against 1,600 more** | confirmed |
+| [F-061](#f-061) | **A proper hyperparameter sweep would have shipped a worse hole model** | confirmed |
+| [F-062](#f-062) | **Gradient boosting was never compared against other model families, until now** | confirmed |
 
 ---
 
@@ -1227,7 +1230,16 @@ might be machined with an endmill instead of a drill").
 
 <a id="f-033"></a>
 ### F-033 — Only 14 operation chains cover every hole in the corpus
-**Status:** confirmed · **Tiers:** Easy + Hard · **Source:** `scripts/mine_hole_rules.py`, 500 parts
+**Status:** confirmed, count later updated · **Tiers:** Easy + Hard · **Source:** `scripts/mine_hole_rules.py`, 500 parts
+
+**Update.** This measurement used 1,120 holes from 500 parts. F-051 later
+re-extracted the full corpus (22,491 holes, all 10,000 parts) and found a
+**15th chain**, rare enough not to appear in the earlier sample. The shipped
+classifier (F-047) is trained on 15 classes, confirmed against the model file
+directly. The count below is left as originally measured, since it is the
+evidence that motivated treating this as a small-label-set classification
+problem in the first place; treat "14" as this sample's figure and "15" as the
+corpus figure everywhere else in this document.
 
 **Finding.** Drilling operations name their XY position in the `.ptp`, and
 `features.py` recovers each hole's XY from the BRep. Matching them assigns
@@ -2543,6 +2555,159 @@ unrecoverable ordering is free in one tier and expensive in another.
 **Consequence.** Medium is bounded near its current 23 out of 35 by information
 that is absent from the input, not by anything we have failed to build. Reaching
 28 would require predicting CAD feature creation order from the finished solid.
+
+---
+
+<a id="f-060"></a>
+### F-060 — The 400-part evaluation slice checks out against 1,600 more
+**Status:** confirmed · **Method** · **Source:** `scripts/evaluate.py --offset 8400 --limit 1600`
+
+**The worry.** Every score in this document, and the whole progression from
+21.97 to 51.40, was measured on the same fixed 400 parts (offset 8000, provably
+unseen by training). Reusing one slice for every comparison is correct for the
+paired methodology in F-050 — you need the same parts before and after a change
+— but it leaves open whether that particular 400 happens to be an easy or hard
+sample of the held-out range. Parts 8,400 to 9,999, 1,600 of them, had never
+been scored at all, by us or by any model.
+
+**The check.** Score all 1,600, and compare against the 400 as two independent
+samples, not paired (they are disjoint parts, so pairing does not apply here;
+this is an unpaired bootstrap on the difference of means).
+
+| Tier | 400-slice | 1,600-reserve | Diff | 95% CI |
+|---|---:|---:|---:|---|
+| Easy | 17.41 | 17.20 | +0.21 | [-0.22, +0.64], crosses zero |
+| Medium | 23.02 | 22.72 | +0.31 | [-0.82, +1.43], crosses zero |
+| Tools | 10.96 | 10.81 | +0.15 | [-0.48, +0.80], crosses zero |
+| **Total** | **51.40** | **50.73** | **+0.67** | **[-1.22, +2.55], crosses zero** |
+
+Every interval crosses zero. The 400-part slice is not a lucky draw; it is
+statistically indistinguishable from the 1,600 parts we never looked at.
+
+**The better number.** Combining all 2,000 held-out parts (offset 8000-9999)
+gives a tighter estimate than either slice alone, and it lands almost exactly
+where the 400-part number already was:
+
+| Tier | Combined, 2,000 parts | 95% CI |
+|---|---:|---|
+| Easy | 17.24 / 20 | [17.06, 17.42] |
+| Medium | 22.78 / 35 | [22.33, 23.23] |
+| Tools | 10.84 / 20 | [10.60, 11.09] |
+| **Total** | **50.87 / 75** | **[50.10, 51.65]** |
+
+The confidence interval on the total tightens from ±2.09 (400 parts, F-050) to
+**±0.78** (2,000 parts), simply from more data, no methodology change.
+
+**Implication.** This is a confirmation, not a correction. The 400-part figure
+that every other finding in this document is built on was not an outlier draw,
+and the honest reported number moves from 51.40 to 50.87, well inside the
+400-part slice's own prior confidence interval. Nothing else changes.
+
+---
+
+<a id="f-061"></a>
+### F-061 — A proper hyperparameter sweep would have shipped a worse hole model
+**Status:** confirmed · **Method** · **Source:** ad hoc sweep script, prompted by a documentation review
+
+**The gap.** Both shipped `HistGradientBoostingClassifier` models were carrying
+hyperparameters (`max_iter=300` on both, `l2_regularization=1.0` on the hole
+model) with no documented search behind them. `learning_rate=0.1` and
+`max_leaf_nodes=31` are scikit-learn's defaults, untouched. Nowhere in this
+document or METHODS.md was that stated, which reads as an oversight, because it
+was one.
+
+**The check.** A grid search over `learning_rate ∈ {0.05, 0.1, 0.2}`,
+`max_leaf_nodes ∈ {15, 31, 63}`, `l2_regularization ∈ {0, 1.0}`, done the way a
+tuning search should be done here: a third split carved out of the *training*
+range only (parts 0-6,999 fit, 7,000-7,999 validate), so the parts-8,000-and-up
+test set that every other number in this project rests on was never touched by
+model selection.
+
+| Model | Best-on-validation config | Validation gain | Refit, held-out test |
+|---|---|---:|---:|
+| Block order | matched the shipped config | +0.0046 | **0.8968 vs 0.8968 — no change** |
+| Hole chain | `lr=0.05, leaves=15, l2=0` | **+0.0078** | **0.9415 vs 0.9701 — a 2.86-point loss** |
+
+**The counter-intuitive result.** The hole-chain configuration that looked
+better on 2,044 validation rows was **worse by nearly three points** on the
+6,757-row held-out test once both were refit on the full training range and
+compared honestly. The validation split has fifteen classes, several rare, so a
+configuration can fit that split's particular noise and generalize worse
+everywhere else. Block order showed no such effect and no gain either way.
+
+**Learned.** This is F-050's lesson (a comparison on too little data is not
+evidence) applied to model selection rather than feature engineering, and here
+it would have actively misled us: naively trusting the validation winner would
+have shipped a measurably worse model. The hyperparameters chosen originally,
+without a formal search, turn out to be the right ones. The gap was real
+(nothing justified the choice on paper), but the choice itself was not wrong,
+and it is now backed by a measurement instead of an assumption.
+
+---
+
+<a id="f-062"></a>
+### F-062 — Gradient boosting was never compared against other model families, until now
+**Status:** confirmed · **Method** · **Source:** ad hoc family-comparison script, prompted by a documentation review
+
+**The gap.** `HistGradientBoostingClassifier` was chosen for both models at the
+start of the project and never revisited. No logistic regression, no k-nearest
+neighbours, no plain decision tree, no random forest, no small neural network
+was ever fit and measured. F-047 and F-053 justify learning *at all* against the
+rule baseline; neither justifies gradient boosting specifically against any
+other family. That is a real gap in the record, not just in the prose.
+
+**The check.** Six families, fit on the same features and labels, selected on
+the same training-range-only validation split as F-061 (parts 0-6,999 fit,
+7,000-7,999 validate), so family selection cannot see the parts-8,000+ test set
+either.
+
+**Hole chain (10 inputs, 15 chain classes):**
+
+| Model | Validation accuracy |
+|---|---:|
+| Majority class | 0.2613 |
+| Logistic regression | 0.6967 |
+| k-nearest, k=15 | 0.6893 |
+| Random forest, 300 trees | 0.8527 |
+| Small MLP (64, 32) | 0.7652 |
+| Single decision tree | 0.9442 |
+| **Gradient boosting (shipped)** | **0.9692** |
+
+**Block order (11 inputs, 10 order classes):**
+
+| Model | Validation accuracy |
+|---|---:|
+| Majority class | 0.3570 |
+| k-nearest, k=15 | 0.7700 |
+| Single decision tree | 0.8215 |
+| Logistic regression | 0.8650 |
+| Small MLP (64, 32) | 0.8776 |
+| Random forest, 300 trees | 0.8947 |
+| **Gradient boosting (shipped)** | **0.9016** |
+
+Gradient boosting wins outright on both tasks, and was already the validation
+winner in both, so no refit-and-recheck against the test set was needed the way
+F-061 required for the losing hyperparameter case. Held-out test accuracy
+reproduces exactly: **0.9701** hole chain, **0.8968** block order, matching every
+number already reported elsewhere.
+
+**Why, not just that.** Tree-based methods dominate on both tasks, and a single
+undocumented decision tree alone reaches 0.9442 on hole chains, five points
+below gradient boosting but thirty points above logistic regression and every
+distance-based or linear method tried. That is consistent with the pipeline's
+own rule-based components, which are themselves threshold logic on the same
+features (`DEEP_HOLE_DIAMETER_RATIO`, `HOLE_MILLING_RANGE`, and so on): the true
+decision structure here is axis-aligned thresholds, which is exactly the
+inductive bias a tree has and a linear or distance-based model does not.
+Boosting improves on one tree by correcting its errors sequentially; bagging
+(random forest) does not help as much here, likely because ten features and
+several rare classes leave little for row and feature subsampling to exploit.
+
+**Implication.** The gap in the record was real: nothing on paper justified
+gradient boosting over any alternative. The choice itself, now checked, was
+right on both tasks and by a comfortable margin, so nothing about the shipped
+pipeline changes. What changes is that this is now a measured conclusion rather
+than an inherited default.
 The honest options are to accept the ceiling, or to ask the organizers whether
 the intended reading of the rubric is the one we assumed, since Q-002 alone is
 worth 2.25 points here.

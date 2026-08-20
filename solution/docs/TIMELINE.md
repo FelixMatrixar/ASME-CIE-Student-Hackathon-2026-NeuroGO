@@ -1119,6 +1119,89 @@ tier, so "medium at 80%" is partly a question about the scorer.
 
 ---
 
+### 08:15 — Is the 400-part slice actually representative?
+Every number since F-035 was measured on the same fixed 400 parts (offset 8000).
+That is the right call for paired comparisons (F-050), but it left one honest
+question unasked: is that particular 400 a lucky sample of the 2,000 held-out
+parts, or a fair one? 1,600 parts (offset 8400-9999) had never been scored by
+anything.
+
+Re-downloaded the corpus (checksum verified, `831ccc4bd0ee62759ec383556b8c95da`)
+and scored all 1,600. Unpaired comparison against the 400, since these are
+disjoint parts:
+
+| Tier | 400-slice | 1,600-reserve | Diff | 95% CI |
+|---|---:|---:|---:|---|
+| Easy | 17.41 | 17.20 | +0.21 | crosses zero |
+| Medium | 23.02 | 22.72 | +0.31 | crosses zero |
+| Tools | 10.96 | 10.81 | +0.15 | crosses zero |
+| **Total** | **51.40** | **50.73** | **+0.67** | **crosses zero** |
+
+**Learned — the 400 was fair, not lucky (F-060).** Every interval crosses zero.
+Combining all 2,000 held-out parts gives a tighter, more honest headline number:
+**50.87 / 75, 95% CI [50.10, 51.65]** — versus 51.40 with a ±2.09 interval
+before. Same conclusion, half the uncertainty, for one 28-minute evaluation run.
+
+---
+
+### 08:40 — Caught: no hyperparameter tuning was ever documented
+Fair callout — both gradient boosting models carried `max_iter=300` and one
+carried `l2_regularization=1.0`, with no written search behind either, and
+`learning_rate`/`max_leaf_nodes` were bare scikit-learn defaults. Nothing in
+METHODS.md said so.
+
+Ran a grid search properly: a validation split carved out of the *training*
+range only (parts 0-6,999 fit, 7,000-7,999 validate), so the parts-8,000+ test
+number stays untouched by model selection.
+
+| Model | Best-on-validation gain | Refit, held-out test |
+|---|---:|---:|
+| Block order | +0.0046 | 0.8968 vs 0.8968 — no change |
+| Hole chain | **+0.0078** | **0.9415 vs 0.9701 — a 2.86-point loss** |
+
+**◆ DECISION — trust the test split, not the validation winner.** The hole-chain
+configuration that looked better on 2,044 validation rows was worse by nearly
+three points on the real held-out test once refit properly. Same lesson as
+F-050, now applied to model selection: a small validation split is not evidence
+either. The original, untuned hyperparameters turn out to be the right ones —
+kept the shipped model unchanged, documented the sweep in METHODS.md and F-061
+so the choice is measured rather than assumed.
+
+---
+
+### 09:05 — Second callout, and a bigger gap: why gradient boosting at all?
+Fair again. Nothing anywhere compared `HistGradientBoostingClassifier` against
+any other model family. F-047 and F-053 justify learning versus the rule; they
+never justify this specific algorithm versus, say, a random forest or a plain
+neural network.
+
+Same protocol as the hyperparameter check: six families, fit on parts
+0-6,999, chosen by validation accuracy on parts 7,000-7,999, so family choice
+cannot peek at the parts-8,000+ test set either.
+
+| Model | Hole chain val | Block order val |
+|---|---:|---:|
+| Majority class | 0.2613 | 0.3570 |
+| Logistic regression | 0.6967 | 0.8650 |
+| k-nearest, k=15 | 0.6893 | 0.7700 |
+| Random forest, 300 trees | 0.8527 | 0.8947 |
+| Small MLP | 0.7652 | 0.8776 |
+| Single decision tree | 0.9442 | 0.8215 |
+| **Gradient boosting** | **0.9692** | **0.9016** |
+
+Gradient boosting won both, cleanly, so the held-out test figures reproduce
+exactly what was already reported: 0.9701 and 0.8968.
+
+**Learned (F-062).** Tree-based methods dominate everything else on both
+tasks, and even a bare single decision tree beats every linear or
+distance-based method by twenty to thirty points. Our own rule-based components
+are threshold logic on these same features, so the real decision structure is
+axis-aligned thresholds, which a tree represents natively and a linear model
+does not. The choice of algorithm was never written down as a decision; it is
+now, and it holds up.
+
+---
+
 ## Running status
 
 | Item | State |

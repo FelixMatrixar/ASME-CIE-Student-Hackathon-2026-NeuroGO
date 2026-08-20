@@ -139,36 +139,93 @@ sampled, 272 hulls instead of ~4,944 tool placements on a real operation.
 
 ---
 
-## 5. Rules or learning? Decided per feature, by measurement
+## 5. Every decision the pipeline makes, and how each one is answered
+
+Six distinct decisions turn recognised geometry into a plan. Each was decided
+independently, by the same test: does a hand-built rule already separate the
+groups; if not, does a classifier beat that rule on held-out parts. The six
+land on three different kinds of answer, not one.
+
+| # | Decision | Level | Answer | Evidence |
+|---|---|---|---|---|
+| 1 | Chamfer &rarr; operation | per feature | **rule**, exact | 419/419, F-026 |
+| 2 | Pocket &rarr; operation(s) | per feature | **rule** (a model was tried and lost) | 0.859 model vs 0.865 rule, F-048 |
+| 3 | Hole &rarr; operation chain | per feature | **model** | 0.970 vs 0.374 rule, F-047/F-051 |
+| 4 | Tool diameter, given the operation | per operation | **rule**, mined ratios | e.g. 0.383, 0.779, 0.993, `predict.py` |
+| 5 | Tool block order (whole part) | per part | **model** | 0.896 vs 0.349 fixed order, F-053 |
+| 6 | Order within one tool block | per part | **unrecoverable** | every candidate &le; chance, F-029 |
+
+Two feature types the recogniser finds are not decisions at all. Corner blends
+are recognised (validated against the paper's statistics, F-031) but feed no
+operation in the shipped predictor: nothing downstream currently reads them.
+Recognition itself, upstream of all six decisions, is not a rule-versus-model
+question either, it is exact geometric classification: a cylindrical face with
+a closed boundary is a hole, a horizontal plane strictly inside the stock is a
+pocket floor, a slanted plane is a chamfer. There is no ambiguity for a model or
+a rule to resolve there.
 
 ```mermaid
 flowchart TD
-    START["Feature type"] --> Q1{"Does a hand-built<br/>rule separate<br/>the groups?"}
-    Q1 -->|"yes"| RULES["Ship the rule"]
-    Q1 -->|"no"| Q2{"Does a classifier<br/>beat that rule on<br/><b>held-out parts</b>?"}
-    Q2 -->|"yes"| MODEL["Ship the model"]
-    Q2 -->|"no"| KEEP["Keep the rule.<br/>The gap is upstream."]
+    STEP["STEP file"] --> REC
 
-    RULES --> CH["<b>Chamfers</b><br/>1 op per face<br/>exact, 200/200"]
-    MODEL --> HL["<b>Holes</b><br/>0.391 → 0.948<br/><i>F-047</i>"]
-    KEEP --> PK["<b>Pockets</b><br/>model 0.859 < rule 0.865<br/><i>F-048</i>"]
+    subgraph REC["RECOGNISE: exact geometric classification, no decision"]
+        direction LR
+        HOLE["Hole<br/>cylindrical face,<br/>closed boundary"]
+        PF["Pocket floor<br/>plane inside stock"]
+        CHF["Chamfer<br/>slanted plane"]
+        BLD["Corner blend<br/>partial cylinder"]
+    end
 
-    style MODEL fill:#fce8e6,stroke:#ea4335
-    style KEEP fill:#fef7e0,stroke:#fbbc04
-    style RULES fill:#e6f4ea,stroke:#34a853
+    CHF --> T1{"1. operation?"}
+    PF --> T2{"2. operations?"}
+    HOLE --> T3{"3. chain?"}
+    BLD -.->|"recognised, never<br/>used downstream"| NOOP(["no operation"])
+
+    T1 --> R1["<b>RULE</b><br/>1 op / face, exact<br/>419 / 419 · F-026"]
+    T2 --> R2["<b>RULE</b><br/>model tried, lost<br/>0.859 &lt; 0.865 · F-048"]
+    T3 --> M1["<b>MODEL</b><br/>gradient boosting<br/>0.970 vs 0.374 · F-047"]
+
+    R1 --> T4{"4. tool<br/>diameter?"}
+    R2 --> T4
+    M1 --> T4
+    T4 --> R3["<b>RULE</b><br/>mined ratios<br/>0.383 / 0.779 / 0.993"]
+
+    R3 --> T5{"5. block<br/>order, part-level?"}
+    T5 --> M2["<b>MODEL</b><br/>gradient boosting<br/>0.896 vs 0.349 · F-053"]
+
+    M2 --> T6{"6. order<br/>within a block?"}
+    T6 --> U1["<b>UNRECOVERABLE</b><br/>every rule &le; chance<br/>F-029 / F-059"]
+
+    U1 --> COMP["COMPUTE, exact:<br/>IPW mesh · swept volume · NC code"]
+
+    style M1 fill:#fce8e6,stroke:#ea4335
+    style M2 fill:#fce8e6,stroke:#ea4335
+    style R1 fill:#e6f4ea,stroke:#34a853
+    style R2 fill:#fef7e0,stroke:#fbbc04
+    style R3 fill:#e6f4ea,stroke:#34a853
+    style U1 fill:#f1f3f4,stroke:#5f6368
 ```
 
-This is the central methodological point. The three feature types reached three
-*different* answers, each on evidence:
+Reading the colours: green is a rule that is simply correct, nothing to gain by
+learning it. Amber is a rule that survived because a model was actually built
+and measured against it and lost, not because learning was never tried. Red is
+a shipped model, chosen the same way, that won. Grey is neither: two different
+families of candidate rule (F-029) sit at or below chance, and the classifier
+built for pockets (F-048) shares the same upstream cause, so this is treated as
+missing information rather than an unsolved rule.
 
-- **Holes**. Hand rules scored 0.374; a gradient-boosted classifier on the same
-  features scored **0.970** on 6,757 holes from 2,519 unseen parts, cutting
-  operation-count error nearly 17× (0.674 → 0.040). The rules scored **0.000** on
-  the single most common chain.
-- **Pockets**. The same recipe scored **0.859 against the trivial rule's 0.865**.
-  The information is not in the recognised geometry. The training script's guard
-  refused to save it.
-- **Chamfers**. A one-line rule is already exact on 200/200 parts. Nothing to learn.
+Restated as the three answers this produced:
+
+- **Holes.** Hand rules scored 0.374; a gradient-boosted classifier on the same
+  features scored **0.970** on 6,757 holes from unseen parts (F-047, retrained
+  on the full corpus per F-051; the original 2,042-part model scored 0.948
+  against the same rules' 0.391, so more data measurably helped). The rules
+  scored **0.000** on the single most common chain.
+- **Pockets.** The same recipe scored **0.859 against the trivial rule's
+  0.865**. The information is not in the recognised geometry. The training
+  script's guard refused to save it.
+- **Chamfers.** A one-line rule is already exact on 419/419 operations.
+  Nothing to learn.
 
 ---
 
@@ -202,7 +259,7 @@ policy), because the reasoning error is the instructive part.
 ```mermaid
 flowchart LR
     subgraph L1["Unit"]
-        U["93 tests<br/>closed-form geometry,<br/>not golden values"]
+        U["96 tests<br/>closed-form geometry,<br/>not golden values"]
     end
     subgraph L2["Against published statistics"]
         S["blind share 0.502<br/>vs paper 0.502"]

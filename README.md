@@ -10,7 +10,7 @@ machine.
 
 | | |
 |---|---|
-| **Held-out score** | **52.25 / 100** on 400 parts no model was trained on |
+| **Held-out score** | **52.25 / 100** on 400 parts no model was trained on, confirmed at **51.7 / 100** across all 2,000 held-out parts (tighter interval, same conclusion, see below) |
 | **Expected test score** | **about 48 / 100**, and section [What we expect to score](solution/METHODS.md#what-we-expect-to-score-on-the-test-set-and-why-it-is-lower) explains why we report the lower number |
 | **Test submission** | 30 of 30 parts, **0 failures**, **120 of 120 artifacts pass the official validator**, 13.1 seconds total |
 | **Tests** | 96, all passing |
@@ -227,9 +227,31 @@ On 400 parts at or above index 8,000, which no model was trained on:
 | Hard, tool path geometry | 25 | 0.79 | 3% |
 | **Total** | **100** | **52.25** | **52%** |
 
+That 52.25 is measured on the 400 held-out parts used throughout development
+(offset 8,000, limit 400). The other 1,600 held-out parts (offset 8,400 to
+9,999) were never touched by any model or by any configuration decision, and
+scoring them separately gives a second, independent check:
+
+| | 400-part slice | 1,600-part reserve | All 2,000 combined |
+|---|---:|---:|---:|
+| Easy | 17.41 | 17.20 | 17.24 |
+| Medium | 23.02 | 22.72 | 22.78 |
+| Tools | 10.96 | 10.81 | 10.84 |
+| **Total, of 75** | **51.40** | **50.73** | **50.87** |
+| 95% CI | [49.69, 53.08] | [49.89, 51.60] | **[50.10, 51.65]** |
+
+The two slices agree; the difference between them crosses zero on every tier
+(unpaired bootstrap). So this is a confirmation, not a correction: the 400-part
+figure was not a lucky draw, and the full 2,000-part estimate lands almost
+exactly where it already was, with less than half the uncertainty. Adding the
+~0.79 path-tier score, that is **51.7 / 100** across every held-out part we
+have, next to the original **52.25 / 100** from the 400 alone.
+
 Progress came in measured steps, each attributable to one diagnostic:
 **21.97 → 28.07 → 40.75 → 49.5 → 51.4** on the 75 points we tracked during
-development, the machine code tier having sat near zero throughout.
+development, the machine code tier having sat near zero throughout. That
+progression is reported on the original 400-part slice, since it is what every
+iteration in this project was actually measured against at the time.
 
 **Two limits, and they are different in kind.** The workpiece tier is capped by
 information the input does not contain: what remains is the order of features
