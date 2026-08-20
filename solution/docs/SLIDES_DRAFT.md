@@ -317,7 +317,7 @@ because it bundles several changes made in that iteration.*
 > $$\delta_i=s_i^{\text{new}}-s_i^{\text{old}},\qquad
 >   \mathrm{CI}_{95}=\Big[q_{2.5}(\bar\delta^*),\;q_{97.5}(\bar\delta^*)\Big]$$
 >
-> Resample the per-part differences 10,000 times with replacement, take the mean
+> Resample the per-part differences 5,000 times with replacement, take the mean
 > each time, keep the middle 95%. No bell curve is assumed, because the rubric's
 > banding from slide 3 makes per-part scores lumpy rather than smooth. The
 > standard is now 400 held-out parts.

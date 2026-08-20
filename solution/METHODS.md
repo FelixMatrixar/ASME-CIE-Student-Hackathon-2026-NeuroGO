@@ -119,7 +119,11 @@ Hole diameters reach 38.5 millimetres against a corpus range of 5 to 50.
 
 The test folders contain no ground truth, so we cannot measure ourselves on them.
 Our held-out figure of 51.40 out of 75 is the natural estimate, but it would be
-misleading to quote it without an adjustment, for two reasons.
+misleading to quote it without an adjustment, for two reasons. This reweighting
+uses the original 400-part slice specifically, because the complexity buckets
+below were built from it; we have not recomputed them against the fuller
+2,000-part figure from section 5, so treat this section's arithmetic as
+relative to 51.40, not to 50.87.
 
 The test parts are harder than our held-out sample. They average 13.27 predicted
 operations per part against 9.21, and 3.77 recognised holes against 2.29. That is
@@ -516,6 +520,33 @@ an intersection over union of 0.99997 with overcut and undercut both under 0.000
 choice is now decided by a paired comparison over 400 parts with a bootstrap
 interval, because we found that several earlier decisions had been made on
 differences smaller than the noise.
+
+The comparison itself, stated precisely, is a percentile bootstrap on the
+per-part paired difference:
+
+```
+delta_i = score_i(new) - score_i(old)
+CI_95   = [ percentile_2.5(mean(delta*)), percentile_97.5(mean(delta*)) ]
+```
+
+Resample the per-part differences with replacement 5,000 times, take the mean
+of each resample, and keep the middle 95 percent of those 5,000 means. A change
+is treated as real only if that entire interval sits above zero; if it crosses
+zero, it is dropped. This is `bootstrap_ci` in `scripts/evaluate.py`, called on
+the same 400 parts for every comparison in this document.
+
+We use a bootstrap rather than a paired t-test because a t-test assumes the
+underlying differences are roughly normal, and ours are not: the rubric scores
+in bands (section 5 above), so a single part's score jumps between a small set
+of fixed values rather than varying smoothly. The bootstrap makes no assumption
+about that shape, which matters here, not as a formality.
+
+**Where this changed our own conclusions.** Measured naively on 20 parts by
+comparing two averages, our strongest change looked worth +3.31 points.
+Measured this way, on 150 parts, pairing each part against itself, it was worth
+**+8.14**, with a 95 percent interval of [+5.34, +11.06] entirely above zero.
+The careful method did not just confirm the result, it showed the naive one had
+understated our best change by more than half.
 
 Two disciplines are worth stating explicitly.
 

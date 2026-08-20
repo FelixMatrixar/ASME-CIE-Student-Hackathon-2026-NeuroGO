@@ -227,6 +227,25 @@ Restated as the three answers this produced:
 - **Chamfers.** A one-line rule is already exact on 419/419 operations.
   Nothing to learn.
 
+**Two follow-up questions this section does not answer on its own.** Deciding
+*whether* to learn a feature is not the same as deciding *which* model to learn
+it with, or *how* to configure that model, and both were checked only after a
+documentation review pointed out neither had ever been justified.
+
+`HistGradientBoostingClassifier` was compared against five other families
+(logistic regression, k-nearest neighbours, a single decision tree, a random
+forest, a small neural network), selected on a validation split carved out of
+the training range only. It won both tasks outright, 0.9692 against a single
+tree's 0.9442 on hole chains and 0.9016 against a random forest's 0.8947 on
+block order, consistent with the decision structure being axis-aligned
+thresholds rather than something smooth (F-062).
+
+Its hyperparameters were swept the same way. The result there was
+counter-intuitive: the configuration that looked better on a 2,044-row
+validation split scored nearly three points *worse* on the real held-out test
+once refit properly, so the original untuned values turned out to be the right
+ones, now backed by a measurement instead of an assumption (F-061).
+
 ---
 
 ## 6. Discipline: what was rejected, and why
@@ -284,6 +303,26 @@ Two rules that caught real defects:
 2. **Split by part, never by hole.** Holes on one part share a block, a feature mix
    and a tool set. And in-sample scoring is quoted as such: parts 1–12 give 36.85,
    held-out parts give **31.22**, a 5.6-point optimism gap.
+
+**The reliability test itself, written out.** Every configuration decision in
+this project is a percentile bootstrap on the paired per-part difference, not a
+raw average:
+
+```
+delta_i = score_i(new) - score_i(old)
+CI_95   = [ percentile_2.5(mean(delta*)), percentile_97.5(mean(delta*)) ]
+```
+
+`bootstrap_ci` in `scripts/evaluate.py` resamples those differences with
+replacement 5,000 times, takes the mean each time, and keeps the middle 95
+percent. A change ships only if that whole interval sits above zero. A bootstrap
+rather than a t-test, because the rubric scores in bands, so a part's score
+jumps between a fixed set of values instead of varying smoothly, and the
+t-test's normality assumption does not hold here. Measured on 20 parts by
+comparing raw averages, our strongest change looked worth +3.31; measured this
+way, on 150 parts, paired, it was **+8.14, CI [+5.34, +11.06]**, entirely above
+zero. The rigorous method did not just confirm the change, it showed the naive
+one had understated it by more than half.
 
 Stratified validation is what exposed three silent NC-parsing bugs (F-023) that
 unit tests on synthetic paths never could: a `G4` dwell read as motion (6.4×
