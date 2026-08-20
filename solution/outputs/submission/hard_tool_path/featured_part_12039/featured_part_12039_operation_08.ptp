@@ -1,0 +1,14 @@
+(CREATED BY      : machineplan                             )
+(PARTNAME        : CHAMFER_08                  )
+N10 G17 G21 G94 G90
+ 
+(AREA_MILL , TOOL : CHAMFER_MILL_20)
+ 
+N12 T00 M6
+N14 G54
+N16 G17 G0 G90 X5.600 Y0.000 S1000 M3
+N18 G43 Z92.300 H0
+N20 X5.600 Y380.200
+N22 G0 Z92.300
+N24 M5
+N26 M2

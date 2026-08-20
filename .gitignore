@@ -1,0 +1,62 @@
+# --- Dataset ------------------------------------------------------------
+# MachinePlan-10K is a 5.2 GB zip from Zenodo (DOI 10.5281/zenodo.21653081).
+# Never commit it; re-fetch with `python solution/scripts/download_dataset.py`.
+# Exclude the *contents*, not the directory. Git never descends into an
+# excluded directory, so a negation under `solution/data/` can never match.
+solution/data/*
+# The two fitted models are the exception: both learned components fall back
+# to hand-written rules when the file is absent, which silently costs about
+# 0.6 accuracy on hole chains, so the repo has to carry them. 9.6 MB.
+!solution/data/*.joblib
+
+# Anchored to the repo root. A bare `data/` matches at any depth and would
+# re-exclude solution/data, defeating the line above.
+/data/
+*.zip
+*.zip.part
+
+# Bulk geometry, whether inputs or generated predictions.
+*.stl.txt
+*.stp
+*.step
+# ...but keep the contest's own sample submission, which is small and is the
+# reference for the required output formats.
+!sample_submission/**
+
+# --- Working notes ------------------------------------------------------
+# Internal findings log and timeline. These are raw material for the Round 1
+# presentation and Round 2 write-up, not the deliverable documentation itself.
+solution/docs/bg.png
+solution/docs/deck.html
+
+# --- Python -------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Run artifacts ------------------------------------------------------
+logs/
+*.log
+runs/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+wandb/
+
+# --- Editor / OS --------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

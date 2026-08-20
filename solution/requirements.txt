@@ -1,0 +1,18 @@
+# Core numeric + mesh stack.
+# Pinned loosely: the hackathon rubric rewards reproducibility, so record exact
+# resolved versions with `pip freeze > requirements.lock.txt` before submitting.
+
+numpy>=1.26,<3
+scipy>=1.11
+
+# Mesh I/O, volume, and boolean operations.
+# manifold3d is the boolean backend trimesh uses; without it, mesh differences
+# fall back to slow/fragile engines and the IoU scores become unreliable.
+trimesh>=4.4
+manifold3d>=2.5
+rtree>=1.2
+shapely>=2.0
+networkx>=3.2
+
+# Progress reporting for the long-running dataset passes.
+tqdm>=4.66
